@@ -8,13 +8,13 @@
  *  of patent rights can be found in the PATENTS file in the same directory.
  */
 
-import { Source } from './language/source';
 import { parse } from './language/parser';
 import { validate } from './validation/validate';
 import { execute } from './execution/execute';
+import type { Source } from './language/source';
+import type { GraphQLFieldResolver } from './type/definition';
 import type { GraphQLSchema } from './type/schema';
 import type { ExecutionResult } from './execution/execute';
-
 
 /**
  * This is the primary entry point function for fulfilling GraphQL operations
@@ -25,9 +25,11 @@ import type { ExecutionResult } from './execution/execute';
  * may wish to separate the validation and execution phases to a static time
  * tooling step, and a server runtime step.
  *
+ * Accepts either an object with named arguments, or individual arguments:
+ *
  * schema:
  *    The GraphQL type system to use when validating and executing a query.
- * requestString:
+ * source:
  *    A GraphQL language formatted string representing the requested operation.
  * rootValue:
  *    The value provided as the first argument to resolver functions on the top
@@ -39,30 +41,68 @@ import type { ExecutionResult } from './execution/execute';
  *    The name of the operation to use if requestString contains multiple
  *    possible operations. Can be omitted if requestString contains only
  *    one operation.
+ * fieldResolver:
+ *    A resolver function to use when one is not provided by the schema.
+ *    If not provided, the default field resolver is used (which looks for a
+ *    value or method on the source value with the field's name).
  */
-export function graphql(
+declare function graphql({|
   schema: GraphQLSchema,
-  requestString: string,
+  source: string | Source,
   rootValue?: mixed,
   contextValue?: mixed,
   variableValues?: ?{[key: string]: mixed},
-  operationName?: ?string
-): Promise<ExecutionResult> {
+  operationName?: ?string,
+  fieldResolver?: ?GraphQLFieldResolver<any, any>
+|}, ..._: []): Promise<ExecutionResult>;
+/* eslint-disable no-redeclare */
+declare function graphql(
+  schema: GraphQLSchema,
+  source: Source | string,
+  rootValue?: mixed,
+  contextValue?: mixed,
+  variableValues?: ?{[key: string]: mixed},
+  operationName?: ?string,
+  fieldResolver?: ?GraphQLFieldResolver<any, any>
+): Promise<ExecutionResult>;
+export function graphql(
+  argsOrSchema,
+  source,
+  rootValue,
+  contextValue,
+  variableValues,
+  operationName,
+  fieldResolver
+) {
+  // Extract arguments from object args if provided.
+  const args = arguments.length === 1 ? argsOrSchema : undefined;
+  const schema = args ? args.schema : argsOrSchema;
+  if (args) {
+    /* eslint-disable no-param-reassign */
+    source = args.source;
+    rootValue = args.rootValue;
+    contextValue = args.contextValue;
+    variableValues = args.variableValues;
+    operationName = args.operationName;
+    fieldResolver = args.fieldResolver;
+    /* eslint-enable no-param-reassign, no-redeclare */
+  }
+
   return new Promise(resolve => {
-    const source = new Source(requestString || '', 'GraphQL request');
-    const documentAST = parse(source);
-    const validationErrors = validate(schema, documentAST);
+    const document = parse(source);
+    const validationErrors = validate(schema, document);
     if (validationErrors.length > 0) {
       resolve({ errors: validationErrors });
     } else {
       resolve(
         execute(
           schema,
-          documentAST,
+          document,
           rootValue,
           contextValue,
           variableValues,
-          operationName
+          operationName,
+          fieldResolver
         )
       );
     }

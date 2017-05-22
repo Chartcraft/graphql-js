@@ -38,6 +38,45 @@ describe('Execute: Handles basic execution tasks', () => {
     );
   });
 
+  it('throws if no schema is provided', () => {
+    expect(() => execute({
+      document: parse('{ field }')
+    })).to.throw(
+      'Must provide schema'
+    );
+  });
+
+  it('accepts an object with named properties as arguments', async () => {
+    const doc = 'query Example { a }';
+
+    const data = 'rootValue';
+
+    const schema = new GraphQLSchema({
+      query: new GraphQLObjectType({
+        name: 'Type',
+        fields: {
+          a: {
+            type: GraphQLString,
+            resolve(rootValue) {
+              return rootValue;
+            }
+          }
+        }
+      })
+    });
+
+    const result = await execute({
+      schema,
+      document: parse(doc),
+      rootValue: data
+    });
+
+    expect(result).to.jsonEqual({
+      data: { a: 'rootValue' }
+    });
+  });
+
+
   it('executes arbitrary code', async () => {
     const data = {
       a() { return 'Apple'; },
@@ -933,6 +972,36 @@ describe('Execute: Handles basic execution tasks', () => {
         'GraphQL cannot execute a request containing a ObjectTypeDefinition.',
       locations: [ { line: 4, column: 7 } ]
     });
+  });
+
+  it('uses a custom field resolver', async () => {
+    const query = parse('{ foo }');
+
+    const schema = new GraphQLSchema({
+      query: new GraphQLObjectType({
+        name: 'Query',
+        fields: {
+          foo: { type: GraphQLString }
+        }
+      })
+    });
+
+    // For the purposes of test, just return the name of the field!
+    function customResolver(source, args, context, info) {
+      return info.fieldName;
+    }
+
+    const result = await execute(
+      schema,
+      query,
+      null,
+      null,
+      null,
+      null,
+      customResolver
+    );
+
+    expect(result).to.jsonEqual({ data: { foo: 'foo' } });
   });
 
 });
